@@ -123,7 +123,7 @@ const AppContent = ({
           return (
             clip.content?.toLowerCase().includes(searchLower) ||
             (clip.tags && clip.tags.some(tag => tag.toLowerCase().includes(searchLower))) ||
-            clip.category?.toLowerCase().includes(searchLower)
+            (clip.category && clip.category.toLowerCase().includes(searchLower))
           );
         }
         const matchesCategory = clip.category === selectedCategory;
@@ -133,6 +133,15 @@ const AppContent = ({
       })
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   }, [clips, searchQuery, filterType, selectedCategory, activeTag]);
+
+  // Prevent redirect while Supabase is checking for a session
+  if (loading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#fdfdfc] dark:bg-[#0a0a0a]">
+        <FiLoader className="animate-spin text-magazine-accent" size={24} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen relative selection:bg-magazine-accent bg-[#fdfdfc] dark:bg-[#0a0a0a] transition-colors duration-500">
@@ -144,14 +153,12 @@ const AppContent = ({
         user={user} onAuthAction={handleAuth}
       />
 
-      {/* AUTH MODAL - SCREEN CENTERED FIX */}
       <AnimatePresence>
         {showAuthModal && (
           <motion.div 
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }} 
-            // FIXED: Locked to viewport (glass of the screen) using fixed inset-0 and h-screen
             className="fixed inset-0 z-[9999] flex items-center justify-center h-screen w-screen bg-white/90 dark:bg-black/95 backdrop-blur-xl"
             style={{ position: 'fixed', top: 0, left: 0 }}
           >
@@ -197,10 +204,9 @@ const AppContent = ({
 
       <Routes>
         <Route path="/" element={<Home user={user} />} />
-        // Inside your Routes block in App.jsx
-        <Route path="/profile" element={user ? <Profile currentUser={user} /> : <Navigate to="/" />} />
+        <Route path="/profile" element={user ? <Profile currentUser={user} /> : <Navigate to="/" replace />} />
         <Route path="/profile/:username" element={<Profile currentUser={user} />} />
-        <Route path="/chat" element={user ? <Chat user={user} /> : <Navigate to="/" />} />
+        <Route path="/chat" element={user ? <Chat user={user} /> : <Navigate to="/" replace />} />
         <Route path="/settings" element={<Settings user={user} paperIntensity={paperIntensity} setPaperIntensity={setPaperIntensity} onClearVault={clearVault} />} />
 
         <Route path="/archive" element={
@@ -333,20 +339,28 @@ function App() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Initial Session Check
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
-      if (session) fetchClips();
-      else setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session) fetchClips();
-      else {
-        setClips([]);
-        setLoading(false);
+      if (session) {
+        await fetchClips();
       }
+      setLoading(false);
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setUser(session?.user ?? null);
+      if (session) {
+        await fetchClips();
+      } else {
+        setClips([]);
+      }
+      setLoading(false);
     });
+    
     return () => subscription.unsubscribe();
   }, []);
 
@@ -359,14 +373,12 @@ function App() {
   }, [categories, darkMode, paperIntensity, accentColor]);
 
   const fetchClips = async () => {
-    setLoading(true);
     const { data, error } = await supabase
       .from('clips')
       .select('*')
       .order('timestamp', { ascending: false });
     if (error) toast.error("Cloud Sync Failed");
     else setClips(data || []);
-    setLoading(false);
   };
 
   const addClip = async (newClip) => {

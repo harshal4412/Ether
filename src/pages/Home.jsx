@@ -73,7 +73,7 @@ const Home = ({ user }) => {
             transition={{ duration: 1 }}
           >
             <h1 className="font-serif text-5xl md:text-9xl uppercase tracking-tighter mb-6 leading-none">
-              The Front Page
+              ETHER
             </h1>
             <div className="flex justify-center items-center gap-6 text-[10px] uppercase tracking-[0.5em] text-gray-400 font-bold">
               <span>Edition 01</span>
