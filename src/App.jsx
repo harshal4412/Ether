@@ -114,22 +114,24 @@ const AppContent = ({
   }, [location, setActiveTag, setSearchQuery]);
 
   const processedClips = useMemo(() => {
+    const searchLower = searchQuery.toLowerCase().trim();
+
     return clips
       .filter(clip => {
-        if (searchQuery.trim() !== '') return true;
+        // GLOBAL SEARCH: If user is typing, ignore category/type silos to find the match
+        if (searchLower !== '') {
+          return (
+            clip.content?.toLowerCase().includes(searchLower) ||
+            (clip.tags && clip.tags.some(tag => tag.toLowerCase().includes(searchLower))) ||
+            clip.category?.toLowerCase().includes(searchLower)
+          );
+        }
+
+        // BROWSE MODE: Standard category and tag filtering
         const matchesCategory = clip.category === selectedCategory;
         const matchesType = filterType === 'all' || clip.type === filterType;
         const matchesTag = !activeTag || (clip.tags && clip.tags.includes(activeTag));
         return matchesCategory && matchesType && matchesTag;
-      })
-      .filter(clip => {
-        const searchLower = searchQuery.toLowerCase().trim();
-        if (!searchLower) return true;
-        return (
-          clip.content?.toLowerCase().includes(searchLower) ||
-          (clip.tags && clip.tags.some(tag => tag.toLowerCase().includes(searchLower))) ||
-          clip.category?.toLowerCase().includes(searchLower)
-        );
       })
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   }, [clips, searchQuery, filterType, selectedCategory, activeTag]);
@@ -201,7 +203,7 @@ const AppContent = ({
                 transition={{ duration: 0.8, ease: "anticipate" }}
                 className="max-w-[1800px] mx-auto px-6 md:px-12 pb-32"
               >
-                {/* CATEGORY CONTEXT HEADER */}
+                {/* CATEGORY CONTEXT HEADER - Poetic Introduction */}
                 <div className="mb-16 pt-10 border-l border-magazine-accent/30 pl-8">
                   <motion.div
                     key={selectedCategory + "title"}
