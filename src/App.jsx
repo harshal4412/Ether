@@ -27,6 +27,7 @@ import TopNav from './components/archive/TopNav';
 import TagCloud from './components/archive/TagCloud';
 import BulkActionBar from './components/archive/BulkActionBar';
 import EmptyState from './components/archive/EmptyState'; 
+import ScrollToTop from './components/ScrollToTop';
 
 // Aesthetic Engine Configuration with Poetic Context
 const THEMES = {
@@ -456,6 +457,7 @@ function App() {
 
   return (
     <Router>
+      <ScrollToTop />
       <AppContent 
         clips={clips} setClips={setClips} searchQuery={searchQuery} setSearchQuery={setSearchQuery}
         filterType={filterType} setFilterType={setFilterType} activeTag={activeTag} setActiveTag={setActiveTag}
