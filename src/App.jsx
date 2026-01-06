@@ -339,14 +339,20 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Initial Session Check
+    // Initial Session Check with Safety Net
     const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      if (session) {
-        await fetchClips();
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user ?? null);
+        if (session) {
+          await fetchClips();
+        }
+      } catch (error) {
+        console.error("Authentication init failed:", error);
+      } finally {
+        // Stop loading regardless of success or failure
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     initAuth();
