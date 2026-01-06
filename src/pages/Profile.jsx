@@ -9,28 +9,111 @@ import {
 import toast from 'react-hot-toast';
 
 const Profile = ({ currentUser }) => {
-  const { userId } = useParams();
+  // We now pull 'username' from the URL instead of 'userId'
+  const { username } = useParams(); 
   const navigate = useNavigate();
   
-  // Logic: If no userId in URL, we are looking at our own profile
-  const targetId = userId || currentUser?.id;
-  const isOwnProfile = currentUser?.id === targetId;
-
   const [profile, setProfile] = useState(null);
   const [clips, setClips] = useState([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [resolvedTargetId, setResolvedTargetId] = useState(null);
+
+  // New states for follower/following counts
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+
+  // Determine if we are viewing our own profile based on the URL vs Current User
+  const isOwnProfile = !username || (currentUser && (username === (currentUser.user_metadata?.username || currentUser.user_metadata?.display_name)));
 
   useEffect(() => {
-    if (targetId) {
-      fetchProfileAndContent();
-      if (!isOwnProfile && currentUser) checkFollowStatus();
-    } else {
-      setLoading(false);
-    }
-  }, [targetId, currentUser, isOwnProfile]);
+    const resolveIdentityAndFetch = async () => {
+      setLoading(true);
+      let targetId = null;
 
-  const checkFollowStatus = async () => {
+      try {
+        if (!username) {
+          // Case: /profile (Looking at self)
+          if (!currentUser) {
+            navigate('/');
+            return;
+          }
+          targetId = currentUser.id;
+        } else {
+          // Case: /profile/:username
+          const { data: profileLookup, error: lookupError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('username', username)
+            .maybeSingle();
+
+          if (lookupError) throw lookupError;
+
+          if (!profileLookup) {
+            // Fallback: Check if the 'username' provided is actually a UUID
+            const { data: idLookup } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', username)
+              .maybeSingle();
+
+            if (idLookup) {
+              targetId = idLookup.id;
+              setProfile(idLookup);
+            } else {
+              toast.error("Curator not found in archive.");
+              setLoading(false);
+              return;
+            }
+          } else {
+            targetId = profileLookup.id;
+            setProfile(profileLookup);
+          }
+        }
+
+        setResolvedTargetId(targetId);
+        
+        // Fetch everything after we have a valid ID
+        if (targetId) {
+          await fetchProfileAndContent(targetId);
+          await fetchFollowCounts(targetId);
+          if (currentUser && targetId !== currentUser.id) {
+            await checkFollowStatus(targetId);
+          }
+        }
+      } catch (err) {
+        console.error("Identity resolution error:", err);
+        toast.error("Archive connection failed.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    resolveIdentityAndFetch();
+  }, [username, currentUser, navigate]);
+
+  const fetchFollowCounts = async (targetId) => {
+    try {
+      // Fetch followers count (where profile is being followed)
+      const { count: followers, error: err1 } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', targetId);
+
+      // Fetch following count (where profile is the one following)
+      const { count: following, error: err2 } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('follower_id', targetId);
+
+      if (!err1) setFollowerCount(followers || 0);
+      if (!err2) setFollowingCount(following || 0);
+    } catch (err) {
+      console.error("Error fetching counts:", err);
+    }
+  };
+
+  const checkFollowStatus = async (targetId) => {
     const { data } = await supabase
       .from('follows')
       .select('*')
@@ -40,49 +123,52 @@ const Profile = ({ currentUser }) => {
     setIsFollowing(!!data);
   };
 
-  const fetchProfileAndContent = async () => {
-    setLoading(true);
+  const fetchProfileAndContent = async (targetId) => {
     try {
-      // 1. Fetch Profile Details
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', targetId)
         .single();
       
-      if (profileError) throw profileError;
-      setProfile(profileData);
+      if (profileError && profileError.code === 'PGRST116') {
+         setProfile({ username: `Curator_${targetId.slice(0, 5)}`, is_private: false });
+      } else if (profileError) {
+         throw profileError;
+      } else {
+         setProfile(profileData);
+      }
 
-      // 2. Determine Access (Own profile OR public OR following)
-      const { data: followData } = currentUser && !isOwnProfile ? await supabase
-        .from('follows')
-        .select('*')
-        .eq('follower_id', currentUser.id)
-        .eq('following_id', targetId)
-        .single() : { data: null };
+      let hasAccess = (currentUser?.id === targetId);
+      
+      if (!hasAccess) {
+        const { data: followData } = currentUser ? await supabase
+          .from('follows')
+          .select('*')
+          .eq('follower_id', currentUser.id)
+          .eq('following_id', targetId)
+          .single() : { data: null };
 
-      const hasAccess = isOwnProfile || !profileData?.is_private || !!followData;
+        hasAccess = !profileData?.is_private || !!followData;
+      }
 
-      // 3. Fetch Clips if access is granted
       if (hasAccess) {
-        const { data: clipsData } = await supabase
+        const { data: clipsData, error: clipsError } = await supabase
           .from('clips')
           .select('*')
           .eq('user_id', targetId)
           .order('timestamp', { ascending: false });
         
-        setClips(clipsData || []);
+        if (!clipsError) setClips(clipsData || []);
       }
     } catch (err) {
       console.error("Error fetching dossier:", err);
-      toast.error("Profile not found");
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleFollow = async () => {
     if (!currentUser) return toast.error("Identity required to follow.");
+    const targetId = resolvedTargetId;
     
     if (isFollowing) {
       const { error } = await supabase.from('follows')
@@ -92,8 +178,8 @@ const Profile = ({ currentUser }) => {
       
       if (!error) {
         setIsFollowing(false);
+        setFollowerCount(prev => Math.max(0, prev - 1)); // Optimistic update
         toast.error("Removed from Circle");
-        fetchProfileAndContent(); // Refresh content (to hide private clips)
       }
     } else {
       const { error } = await supabase.from('follows')
@@ -101,15 +187,15 @@ const Profile = ({ currentUser }) => {
       
       if (!error) {
         setIsFollowing(true);
+        setFollowerCount(prev => prev + 1); // Optimistic update
         toast.success("Added to Circle");
-        fetchProfileAndContent(); // Refresh content (to show private clips)
       }
     }
   };
 
   const startDispatch = () => {
     if (!currentUser) return toast.error("Identity required to message.");
-    navigate(`/chat?userId=${targetId}`);
+    navigate(`/chat?userId=${resolvedTargetId}`);
   };
 
   if (loading) return (
@@ -120,11 +206,10 @@ const Profile = ({ currentUser }) => {
 
   return (
     <div className="pt-40 pb-32 px-6 max-w-[1400px] mx-auto min-h-screen">
-      {/* Editorial Profile Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-24 gap-12">
         <div className="max-w-3xl">
           <div className="flex items-center gap-6 mb-8">
-             <div className="w-24 h-24 rounded-full border border-gray-100 dark:border-gray-900 overflow-hidden shadow-2xl">
+             <div className="w-24 h-24 rounded-full border border-gray-100 dark:border-gray-900 overflow-hidden shadow-2xl bg-white dark:bg-black">
                 {profile?.avatar_url ? (
                     <img src={profile.avatar_url} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700" alt="Curator Avatar" />
                 ) : (
@@ -135,11 +220,21 @@ const Profile = ({ currentUser }) => {
              </div>
              <div className="flex flex-col">
                <span className="text-[10px] uppercase tracking-[0.5em] text-magazine-accent font-black mb-1">Authenticated Curator</span>
-               <span className="text-[9px] uppercase tracking-[0.2em] text-gray-400">ID: {targetId?.slice(0,8)}...</span>
+               <div className="flex items-center gap-4 mt-2">
+                  <div className="flex flex-col">
+                    <span className="text-lg font-serif italic leading-none">{followingCount}</span>
+                    <span className="text-[7px] uppercase tracking-widest text-gray-400 mt-1">Following</span>
+                  </div>
+                  <div className="w-[1px] h-4 bg-gray-100 dark:bg-gray-800" />
+                  <div className="flex flex-col">
+                    <span className="text-lg font-serif italic leading-none">{followerCount}</span>
+                    <span className="text-[7px] uppercase tracking-widest text-gray-400 mt-1">Followers</span>
+                  </div>
+               </div>
              </div>
           </div>
           
-          <h1 className="font-serif text-7xl md:text-9xl uppercase tracking-tighter mb-8 leading-[0.8]">
+          <h1 className="font-serif text-6xl md:text-8xl lg:text-9xl uppercase tracking-tighter mb-8 leading-[0.8] break-words">
             {profile?.username || 'Anonymous'}
           </h1>
           <p className="font-serif italic text-2xl text-gray-500 dark:text-gray-400 leading-relaxed max-w-2xl">
@@ -147,9 +242,8 @@ const Profile = ({ currentUser }) => {
           </p>
         </div>
 
-        {/* Action Bar */}
         <div className="flex flex-wrap gap-4">
-          {!isOwnProfile ? (
+          {resolvedTargetId !== currentUser?.id ? (
             <>
               <button 
                 onClick={handleFollow}
@@ -184,8 +278,7 @@ const Profile = ({ currentUser }) => {
 
       <div className="h-[1px] w-full bg-gray-100 dark:bg-gray-900 mb-16" />
 
-      {/* Content Section: Gallery vs Privacy Wall */}
-      {(!isOwnProfile && profile?.is_private && !isFollowing) ? (
+      {(resolvedTargetId !== currentUser?.id && profile?.is_private && !isFollowing) ? (
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }} 
           animate={{ opacity: 1, scale: 1 }}
@@ -218,17 +311,17 @@ const Profile = ({ currentUser }) => {
                     alt="Gallery item"
                   />
                 ) : (
-                  <div className="p-12 h-full flex items-center justify-center text-center font-serif italic text-xl leading-relaxed text-gray-700 dark:text-gray-300">
-                    "{clip.content}"
+                  <div className="p-8 h-full flex items-center justify-center text-center font-serif italic text-xl leading-relaxed text-gray-700 dark:text-gray-300 overflow-hidden">
+                    <span className="line-clamp-6">"{clip.content}"</span>
                   </div>
                 )}
-                
-                {/* Visual Overlay on Hover */}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-500" />
               </div>
               <div className="mt-6 flex justify-between items-baseline border-t border-gray-50 dark:border-gray-900 pt-4">
                 <span className="text-[9px] uppercase tracking-[0.4em] text-magazine-accent font-bold">{clip.type}</span>
-                <span className="text-[9px] text-gray-400 uppercase tracking-widest">{new Date(clip.timestamp).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</span>
+                <span className="text-[9px] text-gray-400 uppercase tracking-widest">
+                    {clip.timestamp ? new Date(clip.timestamp).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : 'Recent'}
+                </span>
               </div>
             </motion.div>
           )) : (

@@ -87,7 +87,7 @@ const AppContent = ({
   const mastheadScale = useTransform(scrollY, [0, 200], [1, 0.8]);
   const mastheadOpacity = useTransform(scrollY, [0, 200], [1, 0]);
 
-  // ATMOSPHERE ENGINE: Updates CSS variables and transitions based on category
+  // ATMOSPHERE ENGINE
   useEffect(() => {
     const theme = THEMES[selectedCategory] || THEMES.General;
     const root = document.documentElement;
@@ -119,7 +119,6 @@ const AppContent = ({
 
     return clips
       .filter(clip => {
-        // GLOBAL SEARCH: If user is typing, ignore category/type silos to find the match
         if (searchLower !== '') {
           return (
             clip.content?.toLowerCase().includes(searchLower) ||
@@ -127,8 +126,6 @@ const AppContent = ({
             clip.category?.toLowerCase().includes(searchLower)
           );
         }
-
-        // BROWSE MODE: Standard category and tag filtering
         const matchesCategory = clip.category === selectedCategory;
         const matchesType = filterType === 'all' || clip.type === filterType;
         const matchesTag = !activeTag || (clip.tags && clip.tags.includes(activeTag));
@@ -147,22 +144,41 @@ const AppContent = ({
         user={user} onAuthAction={handleAuth}
       />
 
+      {/* AUTH MODAL - SCREEN CENTERED FIX */}
       <AnimatePresence>
         {showAuthModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-white/90 dark:bg-black/90 backdrop-blur-xl">
-            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="w-full max-w-md bg-white dark:bg-[#0d0d0d] border border-gray-100 dark:border-gray-900 p-10 shadow-2xl relative">
-              <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-gray-400 hover:text-black dark:hover:text-white transition-colors"><FiX size={20} /></button>
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            // FIXED: Locked to viewport (glass of the screen) using fixed inset-0 and h-screen
+            className="fixed inset-0 z-[9999] flex items-center justify-center h-screen w-screen bg-white/90 dark:bg-black/95 backdrop-blur-xl"
+            style={{ position: 'fixed', top: 0, left: 0 }}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }} 
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-md bg-white dark:bg-[#0d0d0d] border border-gray-100 dark:border-gray-900 p-10 shadow-2xl relative mx-6"
+            >
+              <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-gray-400 hover:text-black dark:hover:text-white transition-colors">
+                <FiX size={20} />
+              </button>
+              
               <div className="text-center mb-10">
                 <h2 className="font-serif text-3xl uppercase tracking-widest mb-2">Vault Access</h2>
                 <p className="text-[9px] uppercase tracking-widest text-gray-400">Identify to synchronize anthology</p>
               </div>
+
               <button onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-4 py-4 border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/5 transition-all mb-8 shadow-sm">
                 <FcGoogle size={20} /><span className="text-[10px] uppercase tracking-widest font-black">Continue with Google</span>
               </button>
+
               <div className="relative mb-8 text-center">
                 <span className="bg-white dark:bg-[#0d0d0d] px-4 text-[8px] uppercase tracking-[0.3em] text-gray-300 relative z-10">or Correspondence</span>
                 <div className="absolute top-1/2 left-0 w-full h-[1px] bg-gray-100 dark:bg-gray-900 z-0" />
               </div>
+
               <form onSubmit={handleMagicLink} className="space-y-6">
                 <div className="relative group">
                   <FiMail className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-magazine-accent transition-colors" />
@@ -181,8 +197,9 @@ const AppContent = ({
 
       <Routes>
         <Route path="/" element={<Home user={user} />} />
+        // Inside your Routes block in App.jsx
         <Route path="/profile" element={user ? <Profile currentUser={user} /> : <Navigate to="/" />} />
-        <Route path="/profile/:userId" element={<Profile currentUser={user} />} />
+        <Route path="/profile/:username" element={<Profile currentUser={user} />} />
         <Route path="/chat" element={user ? <Chat user={user} /> : <Navigate to="/" />} />
         <Route path="/settings" element={<Settings user={user} paperIntensity={paperIntensity} setPaperIntensity={setPaperIntensity} onClearVault={clearVault} />} />
 
@@ -204,7 +221,6 @@ const AppContent = ({
                 transition={{ duration: 0.8, ease: "anticipate" }}
                 className="max-w-[1800px] mx-auto px-6 md:px-12 pb-32"
               >
-                {/* CATEGORY CONTEXT HEADER - Poetic Introduction */}
                 <div className="mb-16 pt-10 border-l border-magazine-accent/30 pl-8">
                   <motion.div
                     key={selectedCategory + "title"}

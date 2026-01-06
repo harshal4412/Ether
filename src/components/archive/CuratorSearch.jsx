@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { FiSearch, FiUser, FiX, FiClock, FiCompass, FiHash, FiFileText } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -10,6 +10,7 @@ const CuratorSearch = () => {
   const [recentSearches, setRecentSearches] = useState([]);
   const [isFocused, setIsFocused] = useState(false);
   const searchRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const saved = localStorage.getItem('ether_recent_curators');
@@ -40,7 +41,7 @@ const CuratorSearch = () => {
         .ilike('username', searchLower)
         .limit(3);
 
-      // 2. Search Clips by Tags (array contains) or Content (ilike)
+      // 2. Search Clips by Tags or Content
       const clipQuery = supabase
         .from('clips')
         .select('id, content, tags, type')
@@ -65,6 +66,11 @@ const CuratorSearch = () => {
     localStorage.setItem('ether_recent_curators', JSON.stringify(updated));
     setQuery('');
     setIsFocused(false);
+    
+    // Explicitly navigate to the username path
+    if (item.username) {
+      navigate(`/profile/${item.username}`);
+    }
   };
 
   return (
@@ -96,27 +102,25 @@ const CuratorSearch = () => {
                   <div className="mb-2">
                     <p className="px-4 py-2 text-[8px] text-gray-400 tracking-[0.3em] font-black uppercase border-b border-gray-50 dark:border-white/5">Curators</p>
                     {results.profiles.map(profile => (
-                      <Link 
+                      <div 
                         key={profile.id} 
-                        to={`/profile/${profile.id}`} 
                         onClick={() => addToRecent(profile)} 
-                        className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                        className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
                       >
                         <UserAvatar url={profile.avatar_url} />
                         <span className="text-[10px] font-black uppercase tracking-widest">{profile.username}</span>
-                      </Link>
+                      </div>
                     ))}
                   </div>
                 )}
 
-                {/* CLIPS/POSTS SECTION WITH FILTER PARAMS */}
+                {/* CLIPS SECTION */}
                 {results.clips.length > 0 && (
                   <div>
                     <p className="px-4 py-2 text-[8px] text-gray-400 tracking-[0.3em] font-black uppercase border-b border-gray-50 dark:border-white/5">Folio Entries</p>
                     {results.clips.map(clip => (
                       <Link 
                         key={clip.id} 
-                        /* Pass the first tag and the search query as URL params */
                         to={`/archive?tag=${clip.tags?.[0] || ''}&search=${query}`} 
                         onClick={() => setIsFocused(false)} 
                         className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
@@ -165,17 +169,16 @@ const CuratorSearch = () => {
                 </div>
                 {recentSearches.length > 0 ? (
                   recentSearches.map(item => (
-                    <Link 
+                    <div 
                       key={item.id} 
-                      to={item.username ? `/profile/${item.id}` : `/archive?search=${item.content?.substring(0,10)}`} 
-                      onClick={() => setIsFocused(false)} 
-                      className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-white/5"
+                      onClick={() => addToRecent(item)} 
+                      className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer"
                     >
                       <FiClock className="text-gray-300" size={14} />
                       <span className="text-[10px] font-black uppercase tracking-widest truncate">
                         {item.username || item.content?.substring(0, 20) || "Folio Entry"}
                       </span>
-                    </Link>
+                    </div>
                   ))
                 ) : (
                   <div className="p-12 text-center flex flex-col items-center gap-3">
