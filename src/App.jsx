@@ -182,7 +182,7 @@ const AppContent = ({
               <form onSubmit={handleMagicLink} className="space-y-6">
                 <div className="relative group">
                   <FiMail className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-magazine-accent transition-colors" />
-                  <input type="email" placeholder="ADDRESS" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} required className="w-full bg-transparent border-b border-gray-100 dark:border-gray-900 py-3 pl-8 text-xs tracking-widest text-center focus:outline-none focus:border-magazine-accent" />
+                  <input type="email" placeholder="EMAIL ADDRESS" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} required className="w-full bg-transparent border-b border-gray-100 dark:border-gray-900 py-3 pl-8 text-xs tracking-widest text-center focus:outline-none focus:border-magazine-accent" />
                 </div>
                 <button type="submit" disabled={isSendingMagicLink} className="w-full py-4 bg-black dark:bg-white text-white dark:text-black text-[10px] uppercase tracking-widest font-black hover:opacity-80 transition-all flex items-center justify-center gap-2">
                   {isSendingMagicLink ? <FiLoader className="animate-spin" /> : "Request Magic Link"}
